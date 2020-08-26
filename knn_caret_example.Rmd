@@ -125,38 +125,16 @@ knn_cv
 
 The cross-validation on the training set has tuned a `k` parameter of `r knn_cv$finalModel$k`.
 
-# kNN classification
 
-Pass the final model to `predict()` to perform the classification:
+## ROC Curve
 
-```{r}
-knn_predict_classes <- predict(knn_cv, newdata = testing_set)
-```
-
-The results on the testing dataset are evenly split between the two classes which is a good sign!
+Inspecting the probabilities reveals that a cutoff probability around 0.5 give good classification results.
 
 ```{r}
-table(knn_predict_classes)
-```
+training_set <- training_set %>%
+  mutate(Predicted_prob = predict(knn_cv, type = "prob")$genuine)
 
-The `confusionMatrix()` function reports a number of performance statistics.
-
-```{r}
-knn_cm <- confusionMatrix(knn_predict_classes, testing_set$Status, mode = "everything")
-knn_cm
-```
-
-Indeed we have achieved perfect classification with this kNN classifier!
-
-# ROC Curve
-
-Inspecting the probabilities reveals that any cutoff somewhere in [0.5,0.8] will give about the same classification results.
-
-```{r}
-testing_set <- testing_set %>%
-  mutate(Predicted_prob = predict(knn_cv, newdata = testing_set, type = "prob")$genuine)
-
-testing_set %>%
+training_set %>%
   ggplot() +
   aes(x = Predicted_prob, fill = Status) +
   geom_histogram(bins = 20, ) +
@@ -166,7 +144,7 @@ testing_set %>%
 An ROC curve is another way to visualise the results and identify a good cutoff. 
 
 ```{r}
-pROC_obj <- roc(testing_set$Status, testing_set$Predicted_prob,
+pROC_train <- roc(training_set$Status, training_set$Predicted_prob,
                 quiet = TRUE,
                 plot = TRUE, 
                 percent = TRUE,
@@ -176,4 +154,35 @@ pROC_obj <- roc(testing_set$Status, testing_set$Predicted_prob,
                 print.thres.best.method = "youden")
 ```
 
-According to the Youden criterion the best threshold is 0.7.
+According to the Youden criterion on the training set, the best threshold is 0.4.
+
+
+# kNN classification
+
+Apply the final model, with k = 31 and cutoff = 0.4, to the testing dataset to get an estimate of the true performance of this classifier.
+
+```{r}
+knn_predictions <- predict(knn_cv, newdata = testing_set, type = "prob") %>%
+  select(probability = genuine) %>%
+  mutate(class = ifelse(probability > 0.4, "genuine", "counterfeit")) %>%
+  mutate(class = factor(class))
+```
+
+The results on the testing dataset are evenly split between the two classes which is a good sign!
+
+```{r}
+table(knn_predictions$class)
+```
+
+The `confusionMatrix()` function reports a number of performance statistics.
+
+```{r}
+knn_cm <- confusionMatrix(knn_predictions$class, testing_set$Status, mode = "everything")
+knn_cm
+```
+
+Indeed we have achieved perfect classification with this kNN classifier!
+
+
+
+
