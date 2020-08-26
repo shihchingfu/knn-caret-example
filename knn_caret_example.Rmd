@@ -63,7 +63,27 @@ banknote %>%
             .groups = "keep")
 ```
 
-Below is a simple visualisation of the distribution of the perimeters of the bank notes.
+In most of the measurements of bank notes aside from `Length`, genuine and counterfeit notes have quite distinct distributions.
+
+```{r}
+library(tidyr)
+banknote %>% 
+  mutate(ID = 1:n()) %>%
+  pivot_longer(Length:Diagonal,
+               names_to = "Dimension",
+               values_to = "Size") %>%
+  mutate(Dimension = factor(Dimension),
+         ID = factor(ID)) %>%
+  ggplot() +
+  aes(y = Size, fill = Status) +
+  facet_wrap(~ Dimension, scales = "free") +
+  geom_boxplot() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(y = "Size (mm)", title = "Comparison of bank note dimensions")
+```
+
+Below is a visualisation of the distribution of the perimeters of the bank notes.
 
 ```{r}
 banknote %>%
@@ -119,7 +139,7 @@ knn_cv <- train(Status ~ .,
                 method = "knn",
                 trControl = training_control,
                 metric = "Accuracy",
-                tuneGrid = data.frame(k = seq(3,31,by = 2)))
+                tuneGrid = data.frame(k = seq(11,85,by = 2)))
 knn_cv
 ```
 
@@ -137,7 +157,7 @@ training_set <- training_set %>%
 training_set %>%
   ggplot() +
   aes(x = Predicted_prob, fill = Status) +
-  geom_histogram(bins = 20, ) +
+  geom_histogram(bins = 20) +
   labs(x = "Probability", y = "Count", title = "Distribution of predicted probabilities" )
 ```
 
@@ -154,17 +174,17 @@ pROC_train <- roc(training_set$Status, training_set$Predicted_prob,
                 print.thres.best.method = "youden")
 ```
 
-According to the Youden criterion on the training set, the best threshold is 0.4.
+According to the Youden criterion on the training set, the best threshold is 0.5. Choosing this as the cutoff probability returns a perfect classification result on the training data. Be wary of overfitting the training data however.
 
 
 # kNN classification
 
-Apply the final model, with k = 31 and cutoff = 0.4, to the testing dataset to get an estimate of the true performance of this classifier.
+Apply the final model, with k = 73 and cutoff = 0.5, to the testing dataset to get an estimate of the true performance of this classifier.
 
 ```{r}
 knn_predictions <- predict(knn_cv, newdata = testing_set, type = "prob") %>%
   select(probability = genuine) %>%
-  mutate(class = ifelse(probability > 0.4, "genuine", "counterfeit")) %>%
+  mutate(class = ifelse(probability > 0.5, "genuine", "counterfeit")) %>%
   mutate(class = factor(class))
 ```
 
@@ -174,7 +194,7 @@ The results on the testing dataset are evenly split between the two classes whic
 table(knn_predictions$class)
 ```
 
-The `confusionMatrix()` function reports a number of performance statistics.
+Since we have the ground truth data, we can use the `confusionMatrix()` function to report full set of performance statistics.
 
 ```{r}
 knn_cm <- confusionMatrix(knn_predictions$class, testing_set$Status, mode = "everything")
