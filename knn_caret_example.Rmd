@@ -150,14 +150,15 @@ Indeed we have achieved perfect classification with this kNN classifier!
 
 # ROC Curve
 
-Inspecting the probabilities reveals that any cutoff somewhere in the middle of [0,1] will give about the same classification results.
+Inspecting the probabilities reveals that any cutoff somewhere in [0.5,0.8] will give about the same classification results.
 
 ```{r}
-knn_predict_probs <- predict(knn_cv, newdata = testing_set, type = "prob")
+testing_set <- testing_set %>%
+  mutate(Predicted_prob = predict(knn_cv, newdata = testing_set, type = "prob")$genuine)
 
-knn_predict_probs %>%
+testing_set %>%
   ggplot() +
-  aes(x = genuine) +
+  aes(x = Predicted_prob, fill = Status) +
   geom_histogram(bins = 20, ) +
   labs(x = "Probability", y = "Count", title = "Distribution of predicted probabilities" )
 ```
@@ -165,7 +166,7 @@ knn_predict_probs %>%
 An ROC curve is another way to visualise the results and identify a good cutoff. 
 
 ```{r}
-pROC_obj <- roc(testing_set$Status,knn_predict_probs$genuine,
+pROC_obj <- roc(testing_set$Status, testing_set$Predicted_prob,
                 quiet = TRUE,
                 plot = TRUE, 
                 percent = TRUE,
