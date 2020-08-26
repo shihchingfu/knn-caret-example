@@ -1,0 +1,171 @@
+---
+title: 'kNN tuning using `caret`'
+author: "Shih Ching Fu"
+date: "August 2020"
+output:
+  html_document:
+    df: paged 
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: readable
+    highlight: haddock
+    code_download: true
+    self_contained: true
+---
+
+This notebook describes an example of using the `caret`[^caret] package to conduct hyperparameter tuning for the k-Nearest Neighbour classifier.
+
+```{r libraries, message=FALSE}
+library(mclust)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(pROC)
+```
+
+[^caret]:  Max Kuhn (2020). caret: Classification and Regression Training. R package version 6.0-86. https://CRAN.R-project.org/package=caret
+
+# Example dataset
+
+The example dataset is the `banknote` dataframe found in the `mclust`[^mclust] package. It contains six measurements made on 100 genuine and 100 counterfeit old-Swiss 1000-franc bank notes.
+
+[^mclust]: Scrucca L., Fop M., Murphy T. B. and Raftery A. E. (2016) mclust 5: clustering, classification and density estimation using Gaussian finite mixture models The R Journal 8/1, pp. 289-317
+
+```{r}
+data(banknote)
+glimpse(banknote)
+```
+
+There are six predictor variables (`Length`, `Left`, `Right`, `Bottom`, `Top`, `Diagonal`) with `Status` being the categorical response or class variable having two levels, namely  `genuine` and `counterfeit`.
+
+# Exploratory data analysis
+
+Observe that the dataset is balanced with 100 observations against each level of `Status`.
+
+```{r}
+banknote %>%
+  group_by(Status) %>%
+  summarise(N = n(), 
+            Mean_Length = mean(Length),
+            Mean_Left = mean(Left),
+            Mean_Right = mean(Right),
+            Mean_Bottom = mean(Bottom),
+            Mean_Top = mean(Top),
+            Mean_Diagonal = mean(Diagonal),
+            .groups = "keep")
+```
+
+Below is a simple visualisation of the distribution of the perimeters of the bank notes.
+
+```{r}
+banknote %>%
+  mutate(Perimeter = 2*Length + Left + Right) %>%
+  ggplot() +
+  aes(x = Perimeter, fill = Status) +
+  geom_density(alpha = 0.5) +
+  labs(x = "Perimeter (mm)", y = "Density", title = "Distribution of banknote perimeters")
+```
+
+# Split dataset
+
+Create training and testing datasets, preserving the 50/50 class split in each.
+
+```{r}
+set.seed(1)
+training_index <- createDataPartition(banknote$Status, 
+                                      p = 0.8,
+                                      list = FALSE)
+
+training_set <- banknote[training_index, ]
+testing_set <- banknote[-training_index, ]
+```
+
+We can confirm the class split in the training set:
+
+```{r}
+table(training_set$Status)
+```
+
+# Hyper-parameter tuning
+
+Set up the cross-validation for hyperparameter tuning, i.e., 10-fold cross validation repeated 10 times. 
+
+The `summaryFunction` argument determines which metric to use to determine the performance of a particular hyperparameter setting. Here we shall use `defaultSummary` which calculates accuracy and kappa statistic.
+
+```{r Cross validation settings for caret}
+training_control <- trainControl(method = "repeatedcv",
+                                 summaryFunction = defaultSummary,
+                                 classProbs = TRUE,
+                                 number = 10,
+                                 repeats = 10)
+```
+
+Now use the `train()` function to perform the model training/tuning of the `k` hyperparameter.
+
+The range of `k` is from 3 to 31 in steps of 2, i.e., odd distances only.
+
+```{r k-nearest neighbours, cache=TRUE}
+set.seed(2)
+knn_cv <- train(Status ~ ., 
+                data = training_set,
+                method = "knn",
+                trControl = training_control,
+                metric = "Accuracy",
+                tuneGrid = data.frame(k = seq(3,31,by = 2)))
+knn_cv
+```
+
+The cross-validation on the training set has tuned a `k` parameter of `r knn_cv$finalModel$k`.
+
+# kNN classification
+
+Pass the final model to `predict()` to perform the classification:
+
+```{r}
+knn_predict_classes <- predict(knn_cv, newdata = testing_set)
+```
+
+The results on the testing dataset are evenly split between the two classes which is a good sign!
+
+```{r}
+table(knn_predict_classes)
+```
+
+The `confusionMatrix()` function reports a number of performance statistics.
+
+```{r}
+knn_cm <- confusionMatrix(knn_predict_classes, testing_set$Status, mode = "everything")
+knn_cm
+```
+
+Indeed we have achieved perfect classification with this kNN classifier!
+
+# ROC Curve
+
+Inspecting the probabilities reveals that any cutoff somewhere in the middle of [0,1] will give about the same classification results.
+
+```{r}
+knn_predict_probs <- predict(knn_cv, newdata = testing_set, type = "prob")
+
+knn_predict_probs %>%
+  ggplot() +
+  aes(x = genuine) +
+  geom_histogram(bins = 20, ) +
+  labs(x = "Probability", y = "Count", title = "Distribution of predicted probabilities" )
+```
+
+An ROC curve is another way to visualise the results and identify a good cutoff. 
+
+```{r}
+roc(testing_set$Status,knn_predict_probs$genuine,
+    quiet = TRUE,
+    plot = TRUE, 
+    percent = TRUE,
+    auc.polygon = TRUE, 
+    print.auc = TRUE, 
+    print.thres = TRUE,
+    print.thres.best.method = "youden")
+```
+
+According to the Youden criterion the best threshold is 0.7.
