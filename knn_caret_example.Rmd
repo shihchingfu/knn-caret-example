@@ -1,5 +1,5 @@
 ---
-title: 'kNN tuning using `caret`'
+title: 'Tuning kNN using `caret`'
 author: "Shih Ching Fu"
 date: "August 2020"
 output:
@@ -7,11 +7,18 @@ output:
     df: paged 
     toc: true
     toc_depth: 3
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
     number_sections: true
     theme: readable
     highlight: haddock
     code_download: true
-    self_contained: true
+knit: 
+  (function(input_file, encoding) {
+    rmarkdown::render(input_file,
+                      encoding=encoding,
+                      output_file=file.path(dirname(input_file), 'docs', 'index.html'))})
 ---
 
 This notebook describes an example of using the `caret`[^caret] package to conduct hyperparameter tuning for the k-Nearest Neighbour classifier.
@@ -34,7 +41,7 @@ The example dataset is the `banknote` dataframe found in the `mclust`[^mclust] p
 
 ```{r}
 data(banknote)
-glimpse(banknote)
+head(banknote)
 ```
 
 There are six predictor variables (`Length`, `Left`, `Right`, `Bottom`, `Top`, `Diagonal`) with `Status` being the categorical response or class variable having two levels, namely  `genuine` and `counterfeit`.
@@ -105,7 +112,7 @@ Now use the `train()` function to perform the model training/tuning of the `k` h
 
 The range of `k` is from 3 to 31 in steps of 2, i.e., odd distances only.
 
-```{r k-nearest neighbours, cache=TRUE}
+```{r k-nearest neighbours}
 set.seed(2)
 knn_cv <- train(Status ~ ., 
                 data = training_set,
@@ -158,14 +165,14 @@ knn_predict_probs %>%
 An ROC curve is another way to visualise the results and identify a good cutoff. 
 
 ```{r}
-roc(testing_set$Status,knn_predict_probs$genuine,
-    quiet = TRUE,
-    plot = TRUE, 
-    percent = TRUE,
-    auc.polygon = TRUE, 
-    print.auc = TRUE, 
-    print.thres = TRUE,
-    print.thres.best.method = "youden")
+pROC_obj <- roc(testing_set$Status,knn_predict_probs$genuine,
+                quiet = TRUE,
+                plot = TRUE, 
+                percent = TRUE,
+                auc.polygon = TRUE, 
+                print.auc = TRUE, 
+                print.thres = TRUE,
+                print.thres.best.method = "youden")
 ```
 
 According to the Youden criterion the best threshold is 0.7.
